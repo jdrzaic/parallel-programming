@@ -1,7 +1,9 @@
+
 #include<stdio.h>
 #include<complex.h>
 #include<mpi.h>
 #include<stdlib.h>
+#include<math.h>
 
 #define block_first(i,T,N)      (((i) * (N)) / (T))
 #define block_last(i,T,N)       (block_first(i+1,T,N) - 1)
@@ -29,13 +31,14 @@ double complex* read_matrix(char* file, int n) {
 int main(int argc, char** argv) {
 	int size;
 	int rank;
+
         double complex* v;
 	double complex max;
 	MPI_Init(&argc, &argv);
 
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
-        
+
 	int n;
         if(argc == 3) {
                 n = atoi(argv[1]);
@@ -73,13 +76,16 @@ int main(int argc, char** argv) {
                         int selnum = block_size(i, size, n);
                         MPI_Send(v + offset, selnum, MPI_C_DOUBLE_COMPLEX, i, 0, MPI_COMM_WORLD);
                 }
+		for(int i = 0; i < n; ++i) {
+			printf("%lf, %lf\n", creal(v[i]), cimag(v[i]));
+		}
+		v = v + block_first(rank, size, n);
 	} else {
                 v = (double complex*)malloc(elnum * sizeof(double complex));
 		MPI_Recv(v, elnum, MPI_C_DOUBLE_COMPLEX, size - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                printf("process %d recieved %d elements\n", rank, elnum);
+                printf("process %d recieved %d elements\n", size - 1 - rank, elnum);
         }
 	double max_norm;
-	printf("rank %d\n", rank);
 	for(int i = 0; i < elnum; ++i) {
 		double norm = cabs(v[i]);
 		if(i == 0 || norm > max_norm) {
@@ -87,39 +93,44 @@ int main(int argc, char** argv) {
 		}
 	}
 	int idx = size - 1 - rank;
-	printf("idx; %d\n", idx);
 	int shift;
 	for(shift = 1; shift < size; shift <<= 1) {
 		if((idx == 0 || (idx & -idx) > shift) && (idx + shift < size)) {
 			double snorm;
-			MPI_Recv(&snorm, 1, MPI_DOUBLE, idx + shift, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-			printf("sends: %d\n", (idx+shift));
+			int from = rank - shift;
+			MPI_Recv(&snorm, 1, MPI_DOUBLE, from, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 			if(snorm > max_norm) max_norm = snorm;
-		} 
-		else{ 
-			int send_to = idx - shift;
-			printf("recv: %d, sends: %d \n", send_to, idx);
-			if((send_to == 0 || (sent_to & -send_to) > shift) && (send_to >= 0)) {
+		}
+		else{
+			int sidx = idx - shift;
+			if((sidx == 0 || (sidx & -sidx) > shift) && (sidx >= 0)) {
+				int send_to = rank + shift;
 				MPI_Send(&max_norm, 1, MPI_DOUBLE, send_to, 0, MPI_COMM_WORLD);
 			}
-                        printf("recv: %d\n", send_to);
 		}
 	}
-	printf("%d\n", shift);
 	shift >>= 1;
+
 	for(; shift > 0; shift >>= 1) {
 		if((idx == 0 || (idx & -idx) > shift) && (idx + shift < size)) {
-                        printf("sends: %d\n", (idx+shift));
+			int send_to = rank - shift;
 			MPI_Send(&max_norm, 1, MPI_DOUBLE, send_to, 0, MPI_COMM_WORLD);
-                } 
+                }
                 else {
-			int send_to = idx - shift;
-                        printf("recv: %d\n", send_to);
-			if((send_to == 0 || (sent_to & -send_to) > shift) && (send_to >= 0)) {
-				MPI_Recv(&max_norm, 1, MPI_DOUBLE, idx + shift, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+			int sidx = idx - shift;
+			if((sidx == 0 || (sidx & -sidx) > shift) && (sidx >= 0)) {
+				int rec_from = rank + shift;
+				MPI_Recv(&max_norm, 1, MPI_DOUBLE, rec_from, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 			}
                 }
 
+	}
+	if(max_norm == 0.0) {
+		if(rank = size - 1) {
+			printf("norma: 0.0");
+		}
+		MPI_Finalize();
+		return 0;
 	}
 	double eucl = 0.0;
         for(int i = 0; i < elnum; ++i) {
@@ -127,10 +138,28 @@ int main(int argc, char** argv) {
                 eucl += (abs * abs) / (max_norm * max_norm);
         }
 
+	for(shift = 1; shift < size; shift <<= 1) {
+                if((idx == 0 || (idx & -idx) > shift) && (idx + shift < size)) {
+                        double seucl;
+                        int from = rank - shift;
+                        MPI_Recv(&seucl, 1, MPI_DOUBLE, from, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+                        eucl += seucl;
+                }
+                else{
+                        int sidx = idx - shift;
+                        if((sidx == 0 || (sidx & -sidx) > shift) && (sidx >= 0)) {
+                                int send_to = rank + shift;
+                                MPI_Send(&eucl, 1, MPI_DOUBLE, send_to, 0, MPI_COMM_WORLD);
+                        }
+                }
+        }
+
+
 	if(idx == 0) {
-		eucl = eucl * max_norm;
-		printf("norma=%lf", eucl);
+		eucl = sqrt(eucl) * max_norm;
+		printf("norma=%3.14f", eucl);
 	}
+
 	MPI_Finalize();
 	return 0;
 }

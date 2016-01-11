@@ -42,23 +42,20 @@ int main(int argc, char** argv) {
 	int n;
         if(argc == 3) {
                 n = atoi(argv[1]);
-	}else {
-		MPI_Finalize();
-		return 1;
 	}
 	if(size < 1) {
 		if(rank == size - 1) {
 			printf("Number of processes must be positive!\n");
 		}
 		MPI_Finalize();
-		return 1;
+		return 0;
 	}
 	if(argc != 3 || n < 1) {
 		if(rank == size - 1) {
 			printf("error using command line arguments!\n");
 		}
 		MPI_Finalize();
-		return 1;
+		return 0;
 	}
 	int elnum = block_size(rank, size, n);
 
@@ -76,14 +73,10 @@ int main(int argc, char** argv) {
                         int selnum = block_size(i, size, n);
                         MPI_Send(v + offset, selnum, MPI_C_DOUBLE_COMPLEX, i, 0, MPI_COMM_WORLD);
                 }
-		for(int i = 0; i < n; ++i) {
-			printf("%lf, %lf\n", creal(v[i]), cimag(v[i]));
-		}
 		v = v + block_first(rank, size, n);
 	} else {
                 v = (double complex*)malloc(elnum * sizeof(double complex));
 		MPI_Recv(v, elnum, MPI_C_DOUBLE_COMPLEX, size - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-                printf("process %d recieved %d elements\n", size - 1 - rank, elnum);
         }
 	double max_norm;
 	for(int i = 0; i < elnum; ++i) {
@@ -110,7 +103,6 @@ int main(int argc, char** argv) {
 		}
 	}
 	shift >>= 1;
-
 	for(; shift > 0; shift >>= 1) {
 		if((idx == 0 || (idx & -idx) > shift) && (idx + shift < size)) {
 			int send_to = rank - shift;
@@ -127,7 +119,7 @@ int main(int argc, char** argv) {
 	}
 	if(max_norm == 0.0) {
 		if(rank = size - 1) {
-			printf("norma: 0.0");
+			printf("norma=0.0");
 		}
 		MPI_Finalize();
 		return 0;
@@ -153,11 +145,9 @@ int main(int argc, char** argv) {
                         }
                 }
         }
-
-
 	if(idx == 0) {
 		eucl = sqrt(eucl) * max_norm;
-		printf("norma=%3.14f", eucl);
+		printf("norma=%.14lf\n", eucl);
 	}
 
 	MPI_Finalize();

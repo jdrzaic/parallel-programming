@@ -6,13 +6,14 @@
 #define block_first(i,T,N)		(((i) * (N)) / (T))
 
 double func(double value) {
-	return pow(M_E, value);
+	//return pow(M_E, value);
+	return sin(17 * value * M_PI);
 }
 
 double calc_value(double n2, double n, int k) {
 	double v = pow(4, k);
 
-	return (v * n - n2) / (v - 1);
+	return (v * n) / (v - 1) - n2 / (v - 1);
 }
 
 int max(int a, int b) {
@@ -28,6 +29,40 @@ int first_one(int n) {
 	if(n == 0) return 0;
 	while((n >> pos) % 2 == 0) pos++;
 	return pos;
+}
+
+int next_proc(int rank, int size, int n) {
+	for(int i = rank + 1; i < size; ++i) {
+		if(block_first(i, size, n) != block_first(i + 1, size, n)) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+int prev_proc(int rank, int size, int n) {
+	for(int i = rank - 1; i >= 0; --i) {
+		if(block_first(i, size, n) != block_first(i + 1, size, n)) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+int last_proc(int size, int n) {
+	for(int i = size - 1; i >= 0; --i) {
+		if(block_first(i, size, n) != block_first(i + 1, size, n)) {
+			return i;
+		}
+	}
+}
+
+int first_proc(int size, int n) {
+	for(int i = 0; i < size; ++i) {
+		if(block_first(i, size, n) != block_first(i + 1, size, n)) {
+			return i;
+		}
+	}
 }
 
 int main(int argc, char** argv) {
@@ -49,16 +84,14 @@ int main(int argc, char** argv) {
 	h = (b - a) / twotop;
 	//index of first point for this process
 	int first = block_first(rank, size, twotop + 1);
-	printf("first: %d\n", first);
 	//after last
 	int last = block_first(rank + 1, size, twotop + 1);
-	printf("last: %d\n", last);
 	double* trap = (double*)calloc(p + 1, sizeof(double));
 	double* recv = (double*)malloc((p + 1) * sizeof(double));
+	
 	for(int i = first; i < last; ++i) {
 		double point = a + i * h;
 		double f_value = func(point);
-//		printf("f:  %lf\n", f_value);
 		int to = first_one(i);
 		if(i == 0) {
 			to = p;
@@ -73,49 +106,61 @@ int main(int argc, char** argv) {
 	}
 
 	MPI_Allreduce(trap, recv, p + 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-	for(int i = 0; i < p+1; ++i) {
-		printf("i: %.*e\n", 12, recv[i]);
+	if(rank == 0) {
+		for(int i = 0; i < p+1; ++i) {
+//			printf("trap: %.*e\n", 12, recv[i]);
+		}
 	}
 
 	int first_row = block_first(rank, size, p + 1);
 	int last_row = block_first(rank + 1, size, p + 1);
-	printf("first: %d last %d\n", first_row, last_row);
+	if(first_row == last_row) {
+		goto end;
+	}
 	double* table = (double*)calloc(last_row - first_row, sizeof(double));
 	for(int i = 0; i < last_row - first_row; ++i) {
 		table[i] = recv[p - first_row - i];
-		//printf("%d %lf\n", i, table[i]);
 	}
-	for(int i = 1; i < last_row; ++i){
-		if(rank < size - 1) {
-                        MPI_Send(&table[last_row - first_row - 1], 1, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD);
-                        printf("process %d sent %lf to process %d in column %d\n", rank, table[last_row - first_row - 1], rank + 1, i);
-                }
+	free(recv);
 
-		for(int j = last_row - 1; j > max(i, first_row); --j) {
-			table[j - first_row] = calc_value(table[j - first_row - 1], table[j - first_row], i);
+	for(int i = 1; i <= last_row; ++i){
+		double got;
+		if(rank < last_proc(size, p + 1) && rank % 2) {
+			//printf("process %d sends %lf to process %d in column %d\n", rank, table[last_row - first_row - 1], next_proc(rank, size, p + 1), i);
+			MPI_Send(&table[last_row - first_row - 1], 1, MPI_DOUBLE, next_proc(rank, size, p + 1), 0, MPI_COMM_WORLD);
+			//printf("process %d sent %lf to process %d in column %d\n", rank, table[last_row - first_row - 1], next_proc(rank, size, p + 1), i);
+                } else if(rank > first_proc(size, p + 1) && rank % 2 == 0 && i <= first_row) {
+				//printf("%d waits for process %d to send in column %d\n", rank, rank - 1, i);
+				MPI_Recv(&got, 1, MPI_DOUBLE,  prev_proc(rank, size, p + 1), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+				//printf("process %d recieved %lf from process %d in column %d\n", rank, got, rank - 1, i);
 		}
-		//if(rank < size - 1) {
-		//	MPI_Isend(&table[last_row - first_row - 1], 1, MPI_DOUBLE, rank + 1, 0, MPI_COMM_WORLD, &request);
-		//	printf("process %d sent %lf to process %d in column %d:", rank, table[last_row - first_row - 1], rank + 1, i);
-                //}
-		int l = max(i, first_row);
-		if(rank > 0) {
-			double got = 4;
-			MPI_Recv(&got, 1, MPI_DOUBLE, rank - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-			printf("%d %lf recieved", rank, got);
-			table[l - first_row] = calc_value(got, table[l - first_row], i);
-		} else {
-			table[l] = calc_value(table[l - 1], table[l], i);
+		if(rank < last_proc(size, p + 1) && rank % 2 == 0) {
+			//printf("process %d sends %lf to process %d in column %d\n", rank, table[last_row - first_row - 1], next_proc(rank, size, p + 1), i);
+			MPI_Send(&table[last_row - first_row - 1], 1, MPI_DOUBLE,  next_proc(rank, size, p + 1), 0, MPI_COMM_WORLD);
+			//printf("process %d sent %lf to process %d in column %d\n", rank, table[last_row - first_row - 1], next_proc(rank, size, p + 1), i);	
+		} else if(rank > first_proc(size, p + 1) && rank  % 2 && i <= first_row) {
+			//printf("%d waits for process %d to send in column %d\n", rank, rank - 1, i);
+			MPI_Recv(&got, 1, MPI_DOUBLE,  prev_proc(rank, size, p + 1), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+			//printf("process %d recieved %lf from process %d in column %d\n", rank, got, rank - 1, i);
 		}
-		printf("rank: %d first: %d\n", rank, l);
-		for(int t = l - first_row; t < last_row - first_row; ++t) {
-			printf("%d index: %d value: %lf\n", rank, t, table[t]);
+		if(i < last_row) {
+			for(int j = last_row - 1; j > max(i, first_row); --j) {
+				table[j - first_row] = calc_value(table[j - first_row - 1], table[j - first_row], i);
+//				printf("col: %d, row: %d value: %lf\n", i, j, table[j - first_row]);
+			}
+			int l = max(i, first_row);
+			if(rank > first_proc(size, p + 1) && i <= first_row) {
+				table[l - first_row] = calc_value(got, table[l - first_row], i);
+			} else {
+				table[l - first_row] = calc_value(table[l - first_row - 1], table[l - first_row], i);
+			}
+//			printf("col: %d, row: %d value: %lf\n", i, l, table[l - first_row]);
 		}
 	}
-	if(rank == size - 1) {
+	if(rank == last_proc(size, p + 1)) {
 		printf("aproksimacija: %.*e", 14, table[last_row - first_row - 1]);
 	}
-	MPI_Finalize();
+end:	MPI_Finalize();
 	return 0;
 }
 

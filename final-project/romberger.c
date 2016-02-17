@@ -16,11 +16,10 @@ double func(double value) {
 //	return pow(M_E, 13 * value);
 //	return cos(7 * value);
 //	return value * value * value;
-	return 1.0;
+	return pow(value, 1.5);
 }
 
-double calc_value(double n2, double n, int k) {
-	double v = pow(4, k);
+double calc_value(double n2, double n, double v) {
 	return (v * n) / (v - 1) - n2 / (v - 1);
 }
 
@@ -128,15 +127,13 @@ int main(int argc, char** argv) {
 		goto end;
 	}
 	double* table = (double*)calloc(last_row - first_row, sizeof(double));
-	for(int i = 0; i < last_row - first_row; ++i) {
-		table[i] = recv[p - first_row - i];
-	}
-	
+	double fourtok = 4;
 	for(int j = last_row - 1; j >= max(1, first_row); --j) {
-		table[j - first_row] = calc_value(recv[p - j + 1], recv[p - j], 1);
+		table[j - first_row] = calc_value(recv[p - j + 1], recv[p - j], fourtok);
 	}
 
 	for(int i = 2; i <= last_row; ++i){
+		fourtok *= 4;
 		double got;
 		if(rank < last_proc(size, p + 1) && rank % 2) {
 			//printf("process %d sends %lf to process %d in column %d\n", rank, table[last_row - first_row - 1], next_proc(rank, size, p + 1), i);
@@ -158,14 +155,14 @@ int main(int argc, char** argv) {
 		}
 		if(i < last_row) {
 			for(int j = last_row - 1; j > max(i, first_row); --j) {
-				table[j - first_row] = calc_value(table[j - first_row - 1], table[j - first_row], i);
+				table[j - first_row] = calc_value(table[j - first_row - 1], table[j - first_row], fourtok);
 //				printf("col: %d, row: %d value: %lf\n", i, j, table[j - first_row]);
 			}
 			int l = max(i, first_row);
 			if(rank > first_proc(size, p + 1) && i <= first_row) {
-				table[l - first_row] = calc_value(got, table[l - first_row], i);
+				table[l - first_row] = calc_value(got, table[l - first_row], fourtok);
 			} else {
-				table[l - first_row] = calc_value(table[l - first_row - 1], table[l - first_row], i);
+				table[l - first_row] = calc_value(table[l - first_row - 1], table[l - first_row], fourtok);
 			}
 			printf("col: %d, row: %d value: %lf\n", i, l, table[l - first_row]);
 		}

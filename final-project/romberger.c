@@ -1,27 +1,31 @@
+
 #include<stdio.h>
 #include<stdlib.h>
 #include<mpi.h>
 #include<math.h>
 
-#define block_first(i,T,N)		(((i) * (N)) / (T))
+unsigned long long int block_first(int i, int T, unsigned long long int N) {
+	double re = (double)i / T;
+	return (unsigned long long int)(re * N);
+}
 
 double func(double value) {
-	//return pow(M_E, value);
-	return sin(17 * value * M_PI);
+//	return pow(M_E, value);
+//	return sin(17 * value * M_PI);
+//	return cos(2 * value * M_PI);
+//	return pow(M_E, 13 * value);
+//	return cos(7 * value);
+//	return value * value * value;
+	return 1.0;
 }
 
 double calc_value(double n2, double n, int k) {
 	double v = pow(4, k);
-
 	return (v * n) / (v - 1) - n2 / (v - 1);
 }
 
 int max(int a, int b) {
 	return a < b ? b : a;
-}
-
-double func2(double value) {
-	return value * value;
 }
 
 int first_one(int n) {
@@ -55,6 +59,7 @@ int last_proc(int size, int n) {
 			return i;
 		}
 	}
+	return -1;
 }
 
 int first_proc(int size, int n) {
@@ -63,6 +68,7 @@ int first_proc(int size, int n) {
 			return i;
 		}
 	}
+	return -1;
 }
 
 int main(int argc, char** argv) {
@@ -80,16 +86,18 @@ int main(int argc, char** argv) {
 	a = atof(argv[1]);
 	b = atof(argv[2]);
 	p = atoi(argv[3]);
-	int twotop = 1 << p;
+	unsigned long long int twotop = 1LL << p;
 	h = (b - a) / twotop;
 	//index of first point for this process
-	int first = block_first(rank, size, twotop + 1);
+	unsigned long long int first = block_first(rank, size, twotop + 1);
 	//after last
-	int last = block_first(rank + 1, size, twotop + 1);
+	unsigned long long int last = block_first(rank + 1, size, twotop + 1);
+	printf("rank: %d, first point: %llu, last point + 1: %llu, size: %d, points: %llu\n", rank, first, last, size, twotop);
 	double* trap = (double*)calloc(p + 1, sizeof(double));
 	double* recv = (double*)malloc((p + 1) * sizeof(double));
+	unsigned long long int i = first;
 	
-	for(int i = first; i < last; ++i) {
+	while(i < last) {
 		double point = a + i * h;
 		double f_value = func(point);
 		int to = first_one(i);
@@ -103,17 +111,19 @@ int main(int argc, char** argv) {
 			trap[j] += (f_value * htmp);
 			htmp *= 2;
 		}
+		++i;
 	}
 
 	MPI_Allreduce(trap, recv, p + 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 	if(rank == 0) {
 		for(int i = 0; i < p+1; ++i) {
-//			printf("trap: %.*e\n", 12, recv[i]);
+			printf("trap: %.*e\n", 12, recv[i]);
 		}
 	}
 
 	int first_row = block_first(rank, size, p + 1);
 	int last_row = block_first(rank + 1, size, p + 1);
+	printf("rank: %d, first_row: %d, last_row+1: %d, \n", rank, first_row, last_row);
 	if(first_row == last_row) {
 		goto end;
 	}
@@ -121,9 +131,12 @@ int main(int argc, char** argv) {
 	for(int i = 0; i < last_row - first_row; ++i) {
 		table[i] = recv[p - first_row - i];
 	}
-	free(recv);
+	
+	for(int j = last_row - 1; j >= max(1, first_row); --j) {
+		table[j - first_row] = calc_value(recv[p - j + 1], recv[p - j], 1);
+	}
 
-	for(int i = 1; i <= last_row; ++i){
+	for(int i = 2; i <= last_row; ++i){
 		double got;
 		if(rank < last_proc(size, p + 1) && rank % 2) {
 			//printf("process %d sends %lf to process %d in column %d\n", rank, table[last_row - first_row - 1], next_proc(rank, size, p + 1), i);
@@ -154,13 +167,16 @@ int main(int argc, char** argv) {
 			} else {
 				table[l - first_row] = calc_value(table[l - first_row - 1], table[l - first_row], i);
 			}
-//			printf("col: %d, row: %d value: %lf\n", i, l, table[l - first_row]);
+			printf("col: %d, row: %d value: %lf\n", i, l, table[l - first_row]);
 		}
 	}
 	if(rank == last_proc(size, p + 1)) {
-		printf("aproksimacija: %.*e", 14, table[last_row - first_row - 1]);
+		printf("aproksimacija: %.16lf\n", table[last_row - first_row - 1]);
 	}
-end:	MPI_Finalize();
+end:	free(recv);
+	free(table);
+	free(trap);
+	MPI_Finalize();
 	return 0;
 }
 

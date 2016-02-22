@@ -10,13 +10,14 @@ unsigned long long int block_first(int i, int T, unsigned long long int N) {
 }
 
 double func(double value) {
-//	return pow(M_E, value);
+//  return pow(M_E, value);
 //	return sin(17 * value * M_PI);
 //	return cos(2 * value * M_PI);
 //	return pow(M_E, 13 * value);
 //	return cos(7 * value);
 //	return value * value * value;
-	return pow(value, 1.5);
+//	return pow(value, 1.5);
+    return pow(value, 0.5);
 }
 
 double calc_value(double n2, double n, double v) {
@@ -82,6 +83,12 @@ int main(int argc, char** argv) {
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 	MPI_Comm_size(MPI_COMM_WORLD, &size);
 
+	if(argc != 4) {
+		if(rank == 0) {
+			fprintf(stderr, "Usage: mpirun -np P %s a b p\n", argv[0]);
+		}
+		goto end2;
+	}
 	a = atof(argv[1]);
 	b = atof(argv[2]);
 	p = atoi(argv[3]);
@@ -91,7 +98,7 @@ int main(int argc, char** argv) {
 	unsigned long long int first = block_first(rank, size, twotop + 1);
 	//after last
 	unsigned long long int last = block_first(rank + 1, size, twotop + 1);
-	printf("rank: %d, first point: %llu, last point + 1: %llu, size: %d, points: %llu\n", rank, first, last, size, twotop);
+	//printf("rank: %d, first point: %llu, last point + 1: %llu, size: %d, points: %llu\n", rank, first, last, size, twotop);
 	double* trap = (double*)calloc(p + 1, sizeof(double));
 	double* recv = (double*)malloc((p + 1) * sizeof(double));
 	unsigned long long int i = first;
@@ -115,14 +122,12 @@ int main(int argc, char** argv) {
 
 	MPI_Allreduce(trap, recv, p + 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 	if(rank == 0) {
-		for(int i = 0; i < p+1; ++i) {
-			printf("trap: %.*e\n", 12, recv[i]);
+		for(int i = p; i >= 0; --i) {
+			printf("col: %d, row: %d value: %.16lf\n", 0, p - i, recv[i]);
 		}
 	}
-
 	int first_row = block_first(rank, size, p + 1);
 	int last_row = block_first(rank + 1, size, p + 1);
-	printf("rank: %d, first_row: %d, last_row+1: %d, \n", rank, first_row, last_row);
 	if(first_row == last_row) {
 		goto end;
 	}
@@ -131,32 +136,28 @@ int main(int argc, char** argv) {
 	for(int j = last_row - 1; j >= max(1, first_row); --j) {
 		table[j - first_row] = calc_value(recv[p - j + 1], recv[p - j], fourtok);
 	}
+    
+    for(int j = max(1, first_row); j < last_row; ++j) {
+        printf("col: 1, row: %d value: %.16lf\n", j, table[j - first_row]);
+    }
 
 	for(int i = 2; i <= last_row; ++i){
 		fourtok *= 4;
 		double got;
 		if(rank < last_proc(size, p + 1) && rank % 2) {
-			//printf("process %d sends %lf to process %d in column %d\n", rank, table[last_row - first_row - 1], next_proc(rank, size, p + 1), i);
 			MPI_Send(&table[last_row - first_row - 1], 1, MPI_DOUBLE, next_proc(rank, size, p + 1), 0, MPI_COMM_WORLD);
-			//printf("process %d sent %lf to process %d in column %d\n", rank, table[last_row - first_row - 1], next_proc(rank, size, p + 1), i);
-                } else if(rank > first_proc(size, p + 1) && rank % 2 == 0 && i <= first_row) {
-				//printf("%d waits for process %d to send in column %d\n", rank, rank - 1, i);
-				MPI_Recv(&got, 1, MPI_DOUBLE,  prev_proc(rank, size, p + 1), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-				//printf("process %d recieved %lf from process %d in column %d\n", rank, got, rank - 1, i);
+		} else if(rank > first_proc(size, p + 1) && rank % 2 == 0 && i <= first_row) {
+			MPI_Recv(&got, 1, MPI_DOUBLE,  prev_proc(rank, size, p + 1), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 		}
 		if(rank < last_proc(size, p + 1) && rank % 2 == 0) {
-			//printf("process %d sends %lf to process %d in column %d\n", rank, table[last_row - first_row - 1], next_proc(rank, size, p + 1), i);
 			MPI_Send(&table[last_row - first_row - 1], 1, MPI_DOUBLE,  next_proc(rank, size, p + 1), 0, MPI_COMM_WORLD);
-			//printf("process %d sent %lf to process %d in column %d\n", rank, table[last_row - first_row - 1], next_proc(rank, size, p + 1), i);	
 		} else if(rank > first_proc(size, p + 1) && rank  % 2 && i <= first_row) {
-			//printf("%d waits for process %d to send in column %d\n", rank, rank - 1, i);
 			MPI_Recv(&got, 1, MPI_DOUBLE,  prev_proc(rank, size, p + 1), 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-			//printf("process %d recieved %lf from process %d in column %d\n", rank, got, rank - 1, i);
 		}
 		if(i < last_row) {
 			for(int j = last_row - 1; j > max(i, first_row); --j) {
 				table[j - first_row] = calc_value(table[j - first_row - 1], table[j - first_row], fourtok);
-//				printf("col: %d, row: %d value: %lf\n", i, j, table[j - first_row]);
+				printf("col: %d, row: %d value: %.16lf\n", i, j, table[j - first_row]);
 			}
 			int l = max(i, first_row);
 			if(rank > first_proc(size, p + 1) && i <= first_row) {
@@ -164,7 +165,7 @@ int main(int argc, char** argv) {
 			} else {
 				table[l - first_row] = calc_value(table[l - first_row - 1], table[l - first_row], fourtok);
 			}
-			printf("col: %d, row: %d value: %lf\n", i, l, table[l - first_row]);
+			printf("col: %d, row: %d value: %.16lf\n", i, l, table[l - first_row]);
 		}
 	}
 	if(rank == last_proc(size, p + 1)) {
@@ -173,7 +174,7 @@ int main(int argc, char** argv) {
 end:	free(recv);
 	free(table);
 	free(trap);
-	MPI_Finalize();
+end2:	MPI_Finalize();
 	return 0;
 }
 

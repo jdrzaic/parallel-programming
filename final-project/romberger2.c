@@ -5,16 +5,11 @@
 #include<math.h>
 #include<string.h>
 
-#define M_PI 3.14159265358979323846264338327950288
-#define M_E 2.71828182845904523536028747135266250
-
 unsigned long long int block_first(int i, int T, unsigned long long int N) {
 	double re = (double)i / T;
 	return (unsigned long long int)(re * N);
 }
-/**
- vrijednost funkcije u tocki
- */
+
 double func(double value) {
 //  return pow(M_E, value);
 	return sin(17 * value * M_PI);
@@ -27,9 +22,6 @@ double func(double value) {
 //  return value;
 }
 
-/**
- formula za izracunavanje elemenata tablice u rombergovom algoritmu
- */
 double calc_value(double n2, double n, double v) {
 	return (v * n) / (v - 1) - n2 / (v - 1);
 }
@@ -38,9 +30,6 @@ int max(int a, int b) {
 	return a < b ? b : a;
 }
 
-/**
- Prvi bit s vrijednosti 1 u n, zdesna
- */
 int first_one(int n) {
 	int pos = 0;
 	if(n == 0) return 0;
@@ -48,9 +37,6 @@ int first_one(int n) {
 	return pos;
 }
 
-/**
- Za proces ranga rank, vraca sljedeci proces koristen kod obrade n elemenata
- */
 int next_proc(int rank, int size, int n) {
 	for(int i = rank + 1; i < size; ++i) {
 		if(block_first(i, size, n) != block_first(i + 1, size, n)) {
@@ -60,10 +46,6 @@ int next_proc(int rank, int size, int n) {
 	return -1;
 }
 
-
-/**
- Za proces ranka rank, vraca prethodni proces koristen kod obrade n elemenata
- */
 int prev_proc(int rank, int size, int n) {
 	for(int i = rank - 1; i >= 0; --i) {
 		if(block_first(i, size, n) != block_first(i + 1, size, n)) {
@@ -73,9 +55,6 @@ int prev_proc(int rank, int size, int n) {
 	return -1;
 }
 
-/**
- Posljednji koristeni proces
- */
 int last_proc(int size, int n) {
 	for(int i = size - 1; i >= 0; --i) {
 		if(block_first(i, size, n) != block_first(i + 1, size, n)) {
@@ -85,9 +64,6 @@ int last_proc(int size, int n) {
 	return -1;
 }
 
-/**
- Prvi koristeni proces
- */
 int first_proc(int size, int n) {
 	for(int i = 0; i < size; ++i) {
 		if(block_first(i, size, n) != block_first(i + 1, size, n)) {
@@ -100,12 +76,12 @@ int first_proc(int size, int n) {
 int main(int argc, char** argv) {
 	int size;
 	int rank;
-    //verbose nacin
     int verb = 0;
 
 	double a, b, h;
 	int p;
-    const char *v = "verbose";
+    char v[8] = "verbose";
+	MPI_Status status;
 	MPI_Request request_recv, request_send;
 	MPI_Init(&argc, &argv);
 	MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -116,9 +92,6 @@ int main(int argc, char** argv) {
             verb = 1;
         }
         else {
-            if(rank == 0) {
-                fprintf(stderr, "Usage: mpirun -np P %s a b p [verbose]\n", argv[0]);
-            }
             goto end2;
         }
     }
@@ -127,71 +100,66 @@ int main(int argc, char** argv) {
 	p = atoi(argv[3]);
 	unsigned long long int twotop = 1LL << p;
 	h = (b - a) / twotop;
-    //indeks prve tocke koju obraduje proces
 	unsigned long long int first = block_first(rank, size, twotop + 1);
-    //indeks tocke iza zadnje tocke koju obraduje proces
 	unsigned long long int last = block_first(rank + 1, size, twotop + 1);
 	double* trap = (double*)calloc(p + 1, sizeof(double));
 	double* recv = (double*)malloc((p + 1) * sizeof(double));
 	unsigned long long int i = first;
 	
-    //racunaj svoj dio produljene trapezne
 	while(i < last) {
 		double point = a + i * h;
 		double f_value = func(point);
 		int to = first_one(i);
 		if(i == 0) {
 			to = p;
-            //prva i zadnja vrijednost u trapeznoj * 1/2
             f_value /= 2;
 		}
 		if(i == twotop) f_value /= 2;
 		double htmp = h;
-        //pribroji tocku u one trapezne formule u kojima se treba nalaziti
 		for(int j = 0; j <= to; ++j) {
 			trap[j] += (f_value * htmp);
 			htmp *= 2;
 		}
 		++i;
 	}
-    
+
 	MPI_Allreduce(trap, recv, p + 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
-    //prvi redak koji obraduje proces
 	int first_row = block_first(rank, size, p + 1);
-    //redak iza zadnjeg kojeg proces obraduje
 	int last_row = block_first(rank + 1, size, p + 1);
     double* all;
-    //koliko elemenata potrebno za tablicu procesu
     int elems = first_row * (last_row - first_row) + (last_row - first_row) * (last_row - first_row + 1) / 2;
-    //proces nema sto raditi
     if(first_row == last_row) {
-        free(recv);
-        free(trap);
-        goto end2;
+        goto end;
     }
-    //ako je verbose nacin
     if (verb) {
         all = (double*)calloc(elems, sizeof(double));
         for (int j = first_row; j < last_row; ++j) {
             all[first_row * (j - first_row) + (j + 1 - first_row) * (j - first_row) / 2] = recv[p - j];
         }
     }
-	//trenutni stupac
+	
 	double* table = (double*)calloc(last_row - first_row, sizeof(double));
 	double fourtok = 4;
 	for(int j = last_row - 1; j >= max(1, first_row); --j) {
 		table[j - first_row] = calc_value(recv[p - j + 1], recv[p - j], fourtok);
 	}
-    if (verb) {
-        for(int j = max(1, first_row); j < last_row; ++j) {
-            all[first_row * (j - first_row) + (j - first_row + 1) * (j - first_row) / 2 + 1] = table[j - first_row];
-        }
-    }
     
+    for(int j = max(1, first_row); j < last_row; ++j) {
+        all[first_row * (j - first_row) + (j - first_row + 1) * (j - first_row) / 2 + 1] = table[j - first_row];
+    }
 
 	for(int i = 2; i <= last_row; ++i){
 		fourtok *= 4;
 		double got;
+        /*if (rank < last_proc(size, p + 1)) {
+            MPI_Isend(&table[last_row - first_row - 1], 1, MPI_DOUBLE, next_proc(rank, size, p + 1), 0, MPI_COMM_WORLD, &request_send);
+        }
+        else if (rank > first_proc(size, p + 1) && i <= first_row) {
+            MPI_Irecv(&got, 1, MPI_DOUBLE,  prev_proc(rank, size, p + 1), 0, MPI_COMM_WORLD, &request_recv);
+        }
+        if(rank < last_proc(size, p + 1)) MPI_Wait(&request_send, &status);
+        else if(rank > first_proc(size, p + 1) && i <= first_row) MPI_Wait(&request_recv, &status);
+        */
 		if(rank < last_proc(size, p + 1) && rank % 2) {
 			MPI_Send(&table[last_row - first_row - 1], 1, MPI_DOUBLE, next_proc(rank, size, p + 1), 0, MPI_COMM_WORLD);
 		} else if(rank > first_proc(size, p + 1) && rank % 2 == 0 && i <= first_row) {
@@ -206,9 +174,7 @@ int main(int argc, char** argv) {
 		if(i < last_row) {
 			for(int j = last_row - 1; j > max(i, first_row); --j) {
 				table[j - first_row] = calc_value(table[j - first_row - 1], table[j - first_row], fourtok);
-                if (verb) {
-                    all[first_row * (j - first_row) + (j + 1 - first_row) * (j - first_row) / 2 + i] = table[j - first_row];
-                }
+                all[first_row * (j - first_row) + (j + 1 - first_row) * (j - first_row) / 2 + i] = table[j - first_row];
 			}
 			int l = max(i, first_row);
 			if(rank > first_proc(size, p + 1) && i <= first_row) {
@@ -217,9 +183,7 @@ int main(int argc, char** argv) {
 				table[l - first_row] = calc_value(table[l - first_row - 1], table[l - first_row], fourtok);
                 
 			}
-            if (verb) {
-                all[first_row * (l - first_row) + (l + 1 - first_row) * (l - first_row) / 2 + i] = table[l - first_row];
-            }
+            all[first_row * (l - first_row) + (l + 1 - first_row) * (l - first_row) / 2 + i] = table[l - first_row];
 		}
 	}
     if(verb) {
@@ -246,20 +210,20 @@ int main(int argc, char** argv) {
             int k = 0;
             for(int i = 0; i < p + 1; ++i) {
                 for(int j = 0; j <= i; ++j) {
-                    printf("% .6lf  ", allp[k++]);
+                    printf("% .8lf  ", allp[k++]);
                 }
                 printf("\n");
             }
             free(allp);
         }
-        free(all);
     }
     if(rank == last_proc(size, p + 1)) {
         printf("aproksimacija: %.16lf\n", table[last_row - first_row - 1]);
 	}
-    free(table);
-    free(recv);
+end:	free(recv);
+	free(table);
 	free(trap);
+    free(all);
 end2:	MPI_Finalize();
 	return 0;
 }

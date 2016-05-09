@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <float.h>
 
-unsigned int BLOCK_SIZE_X = 96;
+unsigned int BLOCK_SIZE_X = 512;
 unsigned int BLOCK_SIZE_Y = 1;
 
 __global__ void hadamard_mul(double* A, double* B, double* C, const int lda, const int nx, const int ny) {
@@ -29,6 +29,7 @@ double* read_matrix(char* file, int m, int n) {
 		exit(1);
     }
     if(fread(a, sizeof(double), m * n, m_file) < m * n) {
+		fprintf(stderr, "error reading file %s.\n", file);
 		fclose(m_file);
 		exit(1);
     }
@@ -41,6 +42,23 @@ int save_bin(char* file, double* x, int m) {
 	if(f == NULL) return 1;
 	fwrite(x, sizeof(double), m, f);
 	fclose(f);
+	return 0;
+}
+
+void hadamard_mul_cpu(int m, int n, double* A, double* B) {
+	for(int i = 0; i < m * n; ++i) {
+		B[i] = A[i] * B[i];
+	}
+}
+
+int check_result(int m, int n, double* cpu_res, double* gpu_res) {
+	for(int i = 0; i < m * n; ++i) {
+		if(cpu_res[i] != gpu_res[i]) {
+			printf("%d %lf %lf\n", i , cpu_res[i], gpu_res[i]);
+			return 1;
+		}
+	}
+	printf("ok\n");
 	return 0;
 }
 
@@ -62,8 +80,12 @@ int main(int argc, char** argv) {
 	double* dev_B = NULL;
 	double* dev_C = NULL;
 
+	double cpu_time = 0;
+	double gpu_time = 0;
+	
 	hst_A = read_matrix(argv[3], m, n);
 	hst_B = read_matrix(argv[4], m, n);
+	hst_C = (double*)malloc(n * m * sizeof(double));
 
 	size_t pitch;
 	int lda; 
@@ -88,14 +110,31 @@ int main(int argc, char** argv) {
 	grid_size.x = min((m + block_size.x - 1) / block_size.x, 65535);
 	grid_size.y = min((n + block_size.y - 1) / block_size.y, 65535);
 
+	gpu_time -= timer();
 	hadamard_mul<<<grid_size, block_size>>>(dev_A, dev_B, dev_C, lda, m, n);	
-
 	cuda_exec(cudaDeviceSynchronize());
+	gpu_time += timer();
 
 	cuda_exec(cudaMemcpy2D(hst_C, m * sizeof(double), dev_C, pitch, m * sizeof(double), n, 
 		cudaMemcpyDeviceToHost));
 
+	cpu_time -= timer();
+	hadamard_mul_cpu(m, n, hst_A, hst_B);
+	cpu_time += timer();
+
+	check_result(m, n, hst_B, hst_C);
+	
 	save_bin(argv[5], hst_C, m * n); 
 
+	printf("gpu time: %lf, cpu time: %lf", gpu_time, cpu_time);
+	
+	free(hst_A);
+	free(hst_B);
+	free(hst_C);
+	
+	cudaFree(dev_A);
+	cudaFree(dev_B);
+	cudaFree(dev_C);
+	
 	return 0;
 }

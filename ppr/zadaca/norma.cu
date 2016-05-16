@@ -241,10 +241,9 @@ int main(int argc, char** argv) {
 	
 	lda = pitch / sizeof(double);
 
-	cuda_exec(cudaMemcpy2D(dev_A, pitch, hst_A, N * sizeof(double), N * sizeof(double), N,
+/*	cuda_exec(cudaMemcpy2D(dev_A, pitch, hst_A, N * sizeof(double), N * sizeof(double), N,
 		cudaMemcpyHostToDevice));
 
-    /*
 	for (int i = 0; i < N; ++i) {
 		for (int j = 0; j < N; ++j) {
 			printf(" %lf", hst_A[i*N + j]);
@@ -261,10 +260,10 @@ int main(int argc, char** argv) {
 
 	gpu_time -= timer();
 	gpu_transpose<<<grid_size, block_size>>>(dev_A, dev_B, N,lda );	
-
+/*
 	cudaMemcpy2D(hst_A, N*sizeof(double), dev_B, pitch, N * sizeof(double), N,
 				cudaMemcpyDeviceToHost);
-/*	
+	
 	for (int i = 0; i < N; ++i) {
 		for (int j = 0; j < N; ++j) {
 			printf(" %lf", hst_A[i*N + j]);

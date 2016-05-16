@@ -10,15 +10,7 @@ outFileName = argv(){3};
 
 A = rand(m, n);
 
-for i = 1:n
-	A(:,i) /= norm(A(:,i));
-end
-
-A'*A
-
-disp(A(1:min(10, m), 1:min(10, n)));
-
 outFile = fopen(outFileName, "wb");
-fwrite(outFile, A', "double");
+fwrite(outFile, A, "double");
 fclose(outFile);
 

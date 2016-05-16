@@ -1,0 +1,69 @@
+#!/usr/bin/bash
+
+DIR=$(dirname "$(readlink -f "$0")")
+USERNAME=gflegar
+DEST="$(id -un)@$(hostname)$(pwd)"
+
+#function lsof
+#{
+#    return 1
+#}
+
+function fermi-remote-tunnel
+{
+    if ! lsof -Pi :2222 > /dev/null; then
+        ssh -fNL 2222:fermi:22 $USERNAME@student.math.hr &&
+        echo "Created tunnel to fermi (port: 2222)"
+    else
+        return 1
+    fi
+}
+
+function fermi-connect
+{
+    fermi-remote-tunnel
+    fermi-runi bash
+}
+
+function fermi-sync
+{
+    fermi-remote-tunnel
+    fermi-run ":"
+    rsync -azvPe "ssh -p2222" --delete --exclude=.git --exclude=build\
+        $(pwd)/ localhost:$DEST
+}
+
+function fermi-build
+{
+    fermi-remote-tunnel
+    fermi-sync
+    fermi-run "bash -c ./build.sh"
+}
+
+function fermi-run
+{
+    fermi-remote-tunnel
+    ssh -p2222 localhost "mkdir -p $DEST && cd $DEST && $@"
+}
+
+function fermi-runi
+{
+    fermi-remote-tunnel
+    ssh -p2222 -t localhost "mkdir -p $DEST && cd $DEST && $@"
+}
+
+function fermi-
+{
+    echo -e "Available commands:"
+    echo -e "\tremote-tunnel"
+    echo -e "\tconnect"
+    echo -e "\tsync"
+    echo -e "\tbuild"
+    echo -e "\trun COMMAND"
+    echo -e "\truni COMMAND"
+}
+
+NAME=$1
+shift
+fermi-$NAME $@
+

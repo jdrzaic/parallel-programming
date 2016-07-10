@@ -180,13 +180,14 @@ int main(int argc, char** argv) {
 	cuda_exec(cudaMalloc(&dev_out, V * sizeof(vertex)));
 	
 	//sortirani rastuci po indeksu prvog cvora
-	int j = 0;
 	vertex r = 0; //todo find best root
 	vertex read;
 	int eds = 0;
+	printf("vrhova = %d\n edgeva = %d\n", V, E);
 	for(int i = 0; i < V; ++i) {
 		for(int j = i + 1; j < V; ++j) {
-			fscanf(f, "%d", read);
+			fscanf(f, "%d", &read);
+			printf("edges %d\n", eds);
 			if(read == 1) {
 				(hst_g.v)[eds] = i;
 				(hst_g.w)[eds] = j;

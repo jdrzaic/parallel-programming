@@ -149,8 +149,8 @@ int main(int argc, char** argv) {
 	vertex* hst_out;
 	vertex* dev_out;
 
-	double vertices = 0;
-	double last_vertices;
+	int vertices = 1;
+	int last_vertices;
 
 	dim3 block_size;
 	dim3 grid_size;
@@ -180,7 +180,7 @@ int main(int argc, char** argv) {
 	cuda_exec(cudaMalloc(&dev_out, V * sizeof(vertex)));
 	
 	//sortirani rastuci po indeksu prvog cvora
-	int j;
+	int j = 0;
 	vertex r = -1;
 	int tren = 0;
 	int max = 0;
@@ -223,12 +223,13 @@ int main(int argc, char** argv) {
 		printf("vertices %d\n", vertices);
 		printf("grid size = %d", grid_size_red.x);
 	}
+	cuda_exec(cudaDeviceSynchronize());
 	int remove_last = 0;
 	if(vertices - V / 2 > V / 2 - vertices + last_vertices) {
 		remove_last = 1;
 	}
-	cuda_exec(cudaMemcpy(&hst_visited, dev_visited, V * sizeof(int), cudaMemcpyDeviceToHost));
-	cuda_exec(cudaMemcpy(&hst_will_visit, dev_will_visit, V * sizeof(int), cudaMemcpyDeviceToHost));
+	cuda_exec(cudaMemcpy(hst_visited, dev_visited, V * sizeof(int), cudaMemcpyDeviceToHost));
+	cuda_exec(cudaMemcpy(hst_will_visit, dev_will_visit, V * sizeof(int), cudaMemcpyDeviceToHost));
 	FILE* of = fopen(argv[2], "w");
 	for(int i = 0; i < V; ++i) {
 		if(!hst_visited[i]) {

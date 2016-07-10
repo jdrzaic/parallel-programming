@@ -181,29 +181,21 @@ int main(int argc, char** argv) {
 	
 	//sortirani rastuci po indeksu prvog cvora
 	int j = 0;
-	vertex r = -1;
-	int tren = 0;
-	int max = 0;
+	vertex r = 0; //todo find best root
 	vertex read;
+	int eds = 0;
 	for(int i = 0; i < V; ++i) {
-		while(1) {
-			fscanf(f, "%d", &read);
-			if(read == -1) {
-				if(tren > max) {
-					max = tren;
-					r = i;
-					tren = 0;
-				}
-				break;
+		for(int j = i + 1; j < V; ++j) {
+			fscanf(f, "%d", read);
+			if(read == 1) {
+				(hst_g.v)[eds] = i;
+				(hst_g.w)[eds] = j;
+				printf("%d %d\n", i, j);
+				++eds;
 			}
-			++tren;
-			(hst_g.v)[j] = i;
-			(hst_g.w)[j] = read;
-			printf("%d %d %d\n", j,(hst_g.v)[j], (hst_g.w)[j]);
-			++j;
 		}
 	}
-	printf("r : %d\n", r);
+	printf("r = %d\n", r);
 	hst_visited[r] = 1;
 	cuda_exec(cudaMemcpy(dev_visited, hst_visited, V * sizeof(vertex), cudaMemcpyHostToDevice));
 	cuda_exec(cudaMemcpy(dev_g.v, hst_g.v, 2 * E * sizeof(vertex), cudaMemcpyHostToDevice));
